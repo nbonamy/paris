@@ -210,13 +210,13 @@
 
 						case 'OneToMany':
 							parent::_add_join_source($join_operator, $table, array(
-								$table.'.'.strtolower($this->_class_name).'_id', '=',
+								$table.'.'.Model::_get_foreign_id($this->_class_name), '=',
 								$this->_class_name.'.id'), $table_alias);
 							return $this;
 
 						case 'ManyToOne':
 							parent::_add_join_source($join_operator, $table, array(
-								$this->_class_name.'.'.strtolower($table).'_id', '=',
+								$this->_class_name.'.'.Model::_get_foreign_id($table), '=',
 								$table.'.id'), $table_alias);
 							return $this;
 
@@ -226,11 +226,11 @@
 							$through = $annotation->value[1];
 
 							parent::_add_join_source($join_operator, $through, array(
-								$through.'.'.strtolower($this->_class_name).'_id', '=',
+								$through.'.'.Model::_get_foreign_id($this->_class_name), '=',
 								$this->_class_name.'.id'), $table_alias);
 
 							parent::_add_join_source($join_operator, $table, array(
-								$through.'.'.strtolower($target).'_id', '=',
+								$through.'.'.Model::_get_foreign_id($target), '=',
 								$target.'.id'), $table_alias);
 
 							return $this;
@@ -286,14 +286,14 @@
 		}
 
 		protected static function getAnnotatedClass($class_name) {
-			if (isset(ORMWrapper::$_annotations[$class_name]) == FALSE) {
+			if (isset(ORMWrapper::$_annotations[$class_name]) === FALSE) {
 				ORMWrapper::$_annotations[$class_name] = new Addendum\ReflectionAnnotatedClass($class_name);
 			}
 			return ORMWrapper::$_annotations[$class_name];
 		}
 
 		public static function getAnnotatedRelationForTarget($class_name, $target) {
-			foreach (ORMWrapper::getAnnotatedClass($class_name)->getAnnotations() as $annotation) {
+			foreach (ORMWrapper::getAnnotatedClass($class_name)->getAllAnnotations() as $annotation) {
 				if ((is_array($annotation->value) && $annotation->value[0] === $target) || $annotation->value === $target) {
 					return $annotation;
 				}
@@ -361,6 +361,21 @@
 				return self::_class_name_to_table_name($class_name);
 			}
 			return $specified_table_name;
+		}
+
+		/**
+		 * Static method to get a table foreign id in relations.
+		 * If the supplied class has a public static property
+		 * named $_foreign_id, the value of this property will be
+		 * returned. If not, the table name (got using _get_table_name)
+		 * will be appended by _id.
+		 */
+		protected static function _get_foreign_id($class_name) {
+			$specified_foreign_id = self::_get_static_property($class_name, '_foreign_id');
+			if (is_null($specified_foreign_id)) {
+				return self::_class_name_to_table_name($class_name).Model::_get_id_column_name($class_name);
+			}
+			return $specified_foreign_id;
 		}
 
 		/**
@@ -571,17 +586,18 @@
 					$target = substr($property, 0, strlen($property)-1);
 					$annotation = ORMWrapper::getAnnotatedRelationForTarget(get_class($this), $target);
 				}
+				//echo $target.' -> '.get_class($annotation)."\n";
 				if ($annotation != NULL) {
 					switch (get_class($annotation)) {
 
 						case 'OneToMany':
-							return $this->has_many($target, strtolower(get_class($this)).'_id')->find_many();
+							return $this->has_many($target, self::_get_foreign_id(get_class($this)))->find_many();
 
 						case 'ManyToOne':
-							return $this->belongs_to($target, strtolower($target).'_id')->find_one();
+							return $this->belongs_to($target, self::_get_foreign_id($target))->find_one();
 
 						case 'ManyToMany':
-							return $this->has_many_through($target, $annotation->value[1], strtolower(get_class($this)).'_id', strtolower($target).'_id')->find_many();
+							return $this->has_many_through($target, $annotation->value[1], self::_get_foreign_id(get_class($this)), self::_get_foreign_id($target))->find_many();
 
 					}
 
